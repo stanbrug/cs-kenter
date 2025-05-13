@@ -2,17 +2,14 @@ ARG BUILD_FROM
 FROM $BUILD_FROM
 
 # Install required packages
-RUN apk add --no-cache \
-    python3 \
-    py3-requests \
-    py3-dateutil \
-    py3-paho-mqtt \
-    py3-pip \
-    build-base \
-    python3-dev
-
-# Install bashio
-RUN pip3 install --no-cache-dir bashio
+RUN \
+    apk add --no-cache \
+        python3 \
+        py3-pip \
+    && pip3 install --no-cache-dir \
+        requests \
+        python-dateutil \
+        paho-mqtt
 
 # Create app directory
 WORKDIR /app
