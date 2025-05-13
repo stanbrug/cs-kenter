@@ -20,13 +20,13 @@ KENTER_CONNECTION_ID = os.getenv('KENTER_CONNECTION_ID')
 KENTER_METERING_POINT = os.getenv('KENTER_METERING_POINT')
 MQTT_HOST = os.getenv('MQTT_HOST', 'core-mosquitto')
 MQTT_PORT = int(os.getenv('MQTT_PORT', '1883'))
-MQTT_USER = os.getenv('MQTT_USER')
-MQTT_PASSWORD = os.getenv('MQTT_PASSWORD')
 CHECK_INTERVAL = int(os.getenv('CHECK_INTERVAL', '3600'))
+MQTT_RECONNECT_DELAY = 5  # seconds between reconnection attempts
 
 class KenterEnergyMonitor:
     def __init__(self):
-        self.mqtt_client = mqtt.Client()
+        self.mqtt_client = None
+        self.mqtt_connected = False
         self.setup_mqtt()
         self.access_token = None
         self.refresh_token = None
@@ -36,35 +36,70 @@ class KenterEnergyMonitor:
         """Setup MQTT connection"""
         def on_connect(client, userdata, flags, rc):
             if rc == 0:
-                logger.info("Connected to MQTT broker")
+                logger.info("Connected to MQTT broker successfully")
+                self.mqtt_connected = True
             else:
-                logger.error(f"Failed to connect to MQTT broker with code: {rc}")
+                error_messages = {
+                    1: "Incorrect protocol version",
+                    2: "Invalid client identifier",
+                    3: "Server unavailable",
+                    4: "Bad username or password",
+                    5: "Not authorized",
+                }
+                error_msg = error_messages.get(rc, f"Unknown error code: {rc}")
+                logger.error(f"Failed to connect to MQTT broker: {error_msg}")
+                self.mqtt_connected = False
         
         def on_disconnect(client, userdata, rc):
+            self.mqtt_connected = False
             if rc != 0:
-                logger.error(f"Unexpected MQTT disconnection with code: {rc}")
-                # Try to reconnect
-                try:
-                    self.mqtt_client.reconnect()
-                except Exception as e:
-                    logger.error(f"Failed to reconnect to MQTT: {e}")
+                logger.error(f"Unexpected MQTT disconnection. Error code: {rc}")
+            else:
+                logger.info("Disconnected from MQTT broker")
 
+        # Create new client instance
+        if self.mqtt_client:
+            try:
+                self.mqtt_client.disconnect()
+                self.mqtt_client.loop_stop()
+            except:
+                pass
+        
+        client_id = f"kenter-energy-{int(time.time())}"
+        self.mqtt_client = mqtt.Client(client_id=client_id, clean_session=True)
+        
         # Set callbacks
         self.mqtt_client.on_connect = on_connect
         self.mqtt_client.on_disconnect = on_disconnect
 
-        # Setup credentials if provided
-        if MQTT_USER and MQTT_PASSWORD:
-            logger.info("Using MQTT credentials")
-            self.mqtt_client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
+        # Enable MQTT logging
+        self.mqtt_client.enable_logger(logger)
+
+        self.connect_mqtt()
         
-        try:
-            logger.info(f"Connecting to MQTT broker at {MQTT_HOST}:{MQTT_PORT}")
-            self.mqtt_client.connect(MQTT_HOST, MQTT_PORT, 60)
-            self.mqtt_client.loop_start()
-        except Exception as e:
-            logger.error(f"Failed to connect to MQTT broker: {e}")
-            raise
+    def connect_mqtt(self):
+        """Establish MQTT connection with retry logic"""
+        while not self.mqtt_connected:
+            try:
+                logger.info(f"Attempting to connect to MQTT broker at {MQTT_HOST}:{MQTT_PORT}")
+                self.mqtt_client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
+                self.mqtt_client.loop_start()
+                
+                # Wait for connection or failure
+                timeout = time.time() + 10  # 10 second timeout
+                while not self.mqtt_connected and time.time() < timeout:
+                    time.sleep(0.1)
+                
+                if not self.mqtt_connected:
+                    logger.error("MQTT connection attempt timed out")
+                    raise Exception("Connection timeout")
+                
+                return True
+            except Exception as e:
+                logger.error(f"Failed to connect to MQTT broker: {e}")
+                time.sleep(MQTT_RECONNECT_DELAY)
+        
+        return False
 
     def get_jwt_token(self):
         """Get JWT token from Kenter API"""
@@ -182,15 +217,27 @@ class KenterEnergyMonitor:
 
     def publish_with_retry(self, topic, payload, retain=True, retries=3):
         """Publish with retry logic"""
+        if not self.mqtt_connected:
+            logger.warning("MQTT not connected, attempting to reconnect...")
+            if not self.connect_mqtt():
+                logger.error("Failed to reconnect to MQTT broker")
+                return False
+
         for attempt in range(retries):
             try:
                 result = self.mqtt_client.publish(topic, payload, retain=retain)
                 if result.rc == mqtt.MQTT_ERR_SUCCESS:
                     return True
                 logger.error(f"Failed to publish to {topic} (attempt {attempt + 1}/{retries})")
+                if not self.mqtt_connected:
+                    if not self.connect_mqtt():
+                        logger.error("Failed to reconnect to MQTT broker")
+                        return False
                 time.sleep(1)  # Wait before retry
             except Exception as e:
                 logger.error(f"Error publishing to {topic}: {e}")
+                if not self.connect_mqtt():
+                    return False
         return False
 
     def publish_sensor_data(self, data, date):
