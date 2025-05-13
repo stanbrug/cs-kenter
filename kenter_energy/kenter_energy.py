@@ -33,6 +33,7 @@ class KenterEnergyMonitor:
         self.daily_feedin = 0      # Track daily total feed-in
         self.last_reset_date = None  # Track when we last reset the counters
         self.setup_mqtt()
+        self.cleanup_old_sensors()  # Run cleanup on startup
         self.access_token = None
         self.refresh_token = None
         self.token_expiry = None
@@ -346,6 +347,25 @@ class KenterEnergyMonitor:
         )
 
         logger.info(f"Daily totals - Consumption: {self.daily_consumption:.3f} kWh, Feed-in: {self.daily_feedin:.3f} kWh")
+
+    def cleanup_old_sensors(self):
+        """Remove old quarter-hourly sensors"""
+        logger.info("Cleaning up old sensor configurations...")
+        
+        # Remove old quarter-hourly sensors
+        for hour in range(24):
+            for minute in [0, 15, 30, 45]:
+                time_str = f"{hour:02d}_{minute:02d}"
+                
+                # Send empty configs to remove old sensors
+                self.publish_with_retry(
+                    f"homeassistant/sensor/kenter_energy_monitor/consumption_{time_str}/config",
+                    ""  # Empty message removes the config
+                )
+                self.publish_with_retry(
+                    f"homeassistant/sensor/kenter_energy_monitor/feedin_{time_str}/config",
+                    ""
+                )
 
     def run(self):
         """Main loop"""
