@@ -213,22 +213,35 @@ class KenterEnergyMonitor:
             response.raise_for_status()
             data = response.json()
 
-            # Extract consumption and feed-in data
-            consumption = 0
-            feedin = 0
+            # Initialize consumption and feed-in totals
+            consumption_total = 0
+            feedin_total = 0
 
             # Process the measurements data
-            if 'measurements' in data:
-                for measurement in data['measurements']:
-                    if measurement.get('type') == 'consumption':
-                        consumption = measurement.get('value', 0)
-                    elif measurement.get('type') == 'feedin':
-                        feedin = measurement.get('value', 0)
+            for channel in data:
+                channel_id = channel.get('channelId')
+                
+                if channel_id == '16180':  # Consumption channel
+                    # Sum up all valid measurements for consumption
+                    for measurement in channel.get('Measurements', []):
+                        if measurement.get('status') == 'Valid':
+                            consumption_total += measurement.get('value', 0)
+                
+                elif channel_id == '16280':  # Feed-in channel
+                    # Sum up all valid measurements for feed-in
+                    for measurement in channel.get('Measurements', []):
+                        if measurement.get('status') == 'Valid':
+                            feedin_total += measurement.get('value', 0)
+
+            logger.info(f"Processed data for {year}-{month}-{day}:")
+            logger.info(f"Total consumption: {consumption_total:.3f} kWh")
+            logger.info(f"Total feed-in: {feedin_total:.3f} kWh")
 
             return {
-                'consumption': consumption,
-                'feedin': feedin
+                'consumption': round(consumption_total, 3),
+                'feedin': round(feedin_total, 3)
             }
+
         except requests.exceptions.RequestException as e:
             logger.error(f"Error fetching data from Kenter API: {e}")
             return None
