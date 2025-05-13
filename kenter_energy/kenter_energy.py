@@ -34,11 +34,37 @@ class KenterEnergyMonitor:
         
     def setup_mqtt(self):
         """Setup MQTT connection"""
+        def on_connect(client, userdata, flags, rc):
+            if rc == 0:
+                logger.info("Connected to MQTT broker")
+            else:
+                logger.error(f"Failed to connect to MQTT broker with code: {rc}")
+        
+        def on_disconnect(client, userdata, rc):
+            if rc != 0:
+                logger.error(f"Unexpected MQTT disconnection with code: {rc}")
+                # Try to reconnect
+                try:
+                    self.mqtt_client.reconnect()
+                except Exception as e:
+                    logger.error(f"Failed to reconnect to MQTT: {e}")
+
+        # Set callbacks
+        self.mqtt_client.on_connect = on_connect
+        self.mqtt_client.on_disconnect = on_disconnect
+
+        # Setup credentials if provided
         if MQTT_USER and MQTT_PASSWORD:
+            logger.info("Using MQTT credentials")
             self.mqtt_client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
         
-        self.mqtt_client.connect(MQTT_HOST, MQTT_PORT, 60)
-        self.mqtt_client.loop_start()
+        try:
+            logger.info(f"Connecting to MQTT broker at {MQTT_HOST}:{MQTT_PORT}")
+            self.mqtt_client.connect(MQTT_HOST, MQTT_PORT, 60)
+            self.mqtt_client.loop_start()
+        except Exception as e:
+            logger.error(f"Failed to connect to MQTT broker: {e}")
+            raise
 
     def get_jwt_token(self):
         """Get JWT token from Kenter API"""
@@ -154,6 +180,19 @@ class KenterEnergyMonitor:
             logger.error(f"Error fetching data from Kenter API: {e}")
             return None
 
+    def publish_with_retry(self, topic, payload, retain=True, retries=3):
+        """Publish with retry logic"""
+        for attempt in range(retries):
+            try:
+                result = self.mqtt_client.publish(topic, payload, retain=retain)
+                if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                    return True
+                logger.error(f"Failed to publish to {topic} (attempt {attempt + 1}/{retries})")
+                time.sleep(1)  # Wait before retry
+            except Exception as e:
+                logger.error(f"Error publishing to {topic}: {e}")
+        return False
+
     def publish_sensor_data(self, data, date):
         """Publish sensor data to Home Assistant via MQTT"""
         if not data:
@@ -199,36 +238,32 @@ class KenterEnergyMonitor:
         logger.info("Publishing MQTT discovery configurations...")
         
         # Publish discovery configs
-        result = self.mqtt_client.publish(
+        success = self.publish_with_retry(
             "homeassistant/sensor/kenter_energy_monitor/consumption/config",
-            json.dumps(consumption_config),
-            retain=True
+            json.dumps(consumption_config)
         )
-        logger.info(f"Published consumption config: {result.rc == mqtt.MQTT_ERR_SUCCESS}")
+        logger.info(f"Published consumption config: {success}")
 
-        result = self.mqtt_client.publish(
+        success = self.publish_with_retry(
             "homeassistant/sensor/kenter_energy_monitor/feedin/config",
-            json.dumps(feedin_config),
-            retain=True
+            json.dumps(feedin_config)
         )
-        logger.info(f"Published feedin config: {result.rc == mqtt.MQTT_ERR_SUCCESS}")
+        logger.info(f"Published feedin config: {success}")
 
         # Publish states
         logger.info("Publishing sensor states...")
         
-        result = self.mqtt_client.publish(
+        success = self.publish_with_retry(
             "kenter/sensor/consumption/state",
-            str(data.get('consumption', 0)),
-            retain=True
+            str(data.get('consumption', 0))
         )
-        logger.info(f"Published consumption state: {result.rc == mqtt.MQTT_ERR_SUCCESS}")
+        logger.info(f"Published consumption state: {success}")
 
-        result = self.mqtt_client.publish(
+        success = self.publish_with_retry(
             "kenter/sensor/feedin/state",
-            str(data.get('feedin', 0)),
-            retain=True
+            str(data.get('feedin', 0))
         )
-        logger.info(f"Published feedin state: {result.rc == mqtt.MQTT_ERR_SUCCESS}")
+        logger.info(f"Published feedin state: {success}")
 
     def run(self):
         """Main loop"""
