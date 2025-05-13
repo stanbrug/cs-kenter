@@ -4,18 +4,13 @@ FROM $BUILD_FROM
 # Install required packages
 RUN apk add --no-cache \
     python3 \
-    py3-pip \
-    gcc \
-    python3-dev \
-    musl-dev \
-    linux-headers
+    py3-requests \
+    py3-dateutil \
+    py3-paho-mqtt \
+    py3-pip
 
 # Create app directory
 WORKDIR /app
-
-# Copy requirements first to leverage Docker cache
-COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Copy application
 COPY . .
