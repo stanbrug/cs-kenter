@@ -2,14 +2,22 @@ ARG BUILD_FROM
 FROM $BUILD_FROM
 
 # Install required packages
-RUN \
-    apk add --no-cache \
-        python3 \
-        py3-pip \
+RUN apk add --no-cache \
+    python3 \
+    py3-pip \
+    gcc \
+    musl-dev \
+    python3-dev \
+    libffi-dev \
     && pip3 install --no-cache-dir \
         requests \
         python-dateutil \
-        paho-mqtt
+        paho-mqtt \
+    && apk del \
+        gcc \
+        musl-dev \
+        python3-dev \
+        libffi-dev
 
 # Create app directory
 WORKDIR /app
