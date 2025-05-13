@@ -1,3 +1,4 @@
 requests==2.31.0
 python-dateutil==2.8.2
-paho-mqtt==1.6.1 
+paho-mqtt==1.6.1
+bashio==0.7.1 
