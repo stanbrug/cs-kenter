@@ -7,8 +7,10 @@ RUN apk add --no-cache \
     py3-requests \
     py3-dateutil \
     py3-paho-mqtt \
-    py3-pip \
-    py3-bashio
+    py3-pip
+
+# Install bashio
+RUN pip3 install --no-cache-dir bashio
 
 # Create app directory
 WORKDIR /app
