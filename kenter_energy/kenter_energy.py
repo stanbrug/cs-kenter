@@ -189,8 +189,8 @@ class KenterEnergyMonitor:
             # If refresh fails, try to get a new token
             return self.get_jwt_token()
         
-    def fetch_kenter_data(self, date):
-        """Fetch data from Kenter API for a specific date and process quarter-hourly values"""
+    def fetch_kenter_data(self, timestamp):
+        """Fetch data from Kenter API for the specific timestamp"""
         token = self.get_jwt_token()
         if not token:
             return None
@@ -202,9 +202,9 @@ class KenterEnergyMonitor:
         
         try:
             # Format date components
-            year = date.year
-            month = str(date.month).zfill(2)
-            day = str(date.day).zfill(2)
+            year = timestamp.year
+            month = str(timestamp.month).zfill(2)
+            day = str(timestamp.day).zfill(2)
 
             # Construct URL for the specific date
             url = f"{KENTER_API_URL}/meetdata/v2/measurements/connections/{KENTER_CONNECTION_ID}/metering-points/{KENTER_METERING_POINT}/days/{year}/{month}/{day}"
@@ -213,47 +213,31 @@ class KenterEnergyMonitor:
             response.raise_for_status()
             data = response.json()
 
-            # Initialize quarter-hourly data structure
-            # Each day has 24 hours * 4 quarters = 96 quarters
-            quarter_data = {}
-            for hour in range(24):
-                for quarter in range(4):
-                    quarter_key = f"{hour:02d}:{quarter*15:02d}"
-                    quarter_data[quarter_key] = {
-                        'consumption': 0,
-                        'feedin': 0,
-                        'timestamp': None
-                    }
+            # Find the measurement for the exact timestamp
+            target_timestamp = int(timestamp.timestamp())
+            consumption = 0
+            feedin = 0
 
-            # Process the measurements data
             for channel in data:
                 channel_id = channel.get('channelId')
                 
                 if channel_id in ['16180', '16280']:  # Consumption or Feed-in channels
                     for measurement in channel.get('Measurements', []):
-                        if measurement.get('status') == 'Valid':
-                            timestamp = measurement.get('timestamp')
-                            value = measurement.get('value', 0)
+                        if (measurement.get('status') == 'Valid' and 
+                            measurement.get('timestamp') == target_timestamp):
                             
-                            # Convert timestamp to hour and quarter
-                            dt = datetime.fromtimestamp(timestamp)
-                            quarter_key = f"{dt.hour:02d}:{dt.minute:02d}"
-                            
-                            if quarter_key in quarter_data:
-                                # Add to appropriate counter
-                                if channel_id == '16180':  # Consumption
-                                    quarter_data[quarter_key]['consumption'] = value
-                                elif channel_id == '16280':  # Feed-in
-                                    quarter_data[quarter_key]['feedin'] = value
-                                quarter_data[quarter_key]['timestamp'] = timestamp
+                            if channel_id == '16180':  # Consumption
+                                consumption = measurement.get('value', 0)
+                            elif channel_id == '16280':  # Feed-in
+                                feedin = measurement.get('value', 0)
 
-            # Log quarter-hourly totals
-            logger.info(f"Processed quarter-hourly data for {year}-{month}-{day}:")
-            for quarter_key, values in quarter_data.items():
-                if values['timestamp']:  # Only log if we have data for this quarter
-                    logger.info(f"Time {quarter_key}: Consumption: {values['consumption']:.3f} kWh, Feed-in: {values['feedin']:.3f} kWh")
+            logger.info(f"Found data for {timestamp.strftime('%Y-%m-%d %H:%M')}:")
+            logger.info(f"Consumption: {consumption:.3f} kWh, Feed-in: {feedin:.3f} kWh")
 
-            return quarter_data
+            return {
+                'consumption': round(consumption, 3),
+                'feedin': round(feedin, 3)
+            }
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Error fetching data from Kenter API: {e}")
@@ -284,18 +268,20 @@ class KenterEnergyMonitor:
                     return False
         return False
 
-    def publish_sensor_data(self, data, date):
+    def publish_sensor_data(self, data):
         """Publish sensor data to Home Assistant via MQTT"""
         if not data:
             return
 
-        date_str = date.strftime('%Y-%m-%d')
-
-        # Create base sensor configurations
-        base_config = {
+        # Create sensor configurations (only needs to be done once, but no harm in repeating)
+        consumption_config = {
+            "name": "Kenter Energy Consumption",
+            "unique_id": "kenter_energy_consumption",
             "device_class": "energy",
             "state_class": "total",
             "unit_of_measurement": "kWh",
+            "state_topic": "kenter/sensor/consumption/state",
+            "value_template": "{{ value }}",
             "device": {
                 "identifiers": ["kenter_energy_monitor"],
                 "name": "Kenter Energy Monitor",
@@ -304,109 +290,73 @@ class KenterEnergyMonitor:
             }
         }
 
-        # Publish quarter-hourly sensors
-        for quarter_key, values in data.items():
-            if not values['timestamp']:  # Skip if no data for this quarter
-                continue
-
-            # Format quarter key for MQTT topics (replace : with _)
-            mqtt_quarter_key = quarter_key.replace(':', '_')
-            
-            # Consumption sensor for this quarter
-            consumption_config = base_config.copy()
-            consumption_config.update({
-                "name": f"Kenter Energy Consumption {quarter_key}",
-                "unique_id": f"kenter_energy_consumption_{mqtt_quarter_key}",
-                "state_topic": f"kenter/sensor/consumption/{mqtt_quarter_key}/state",
-                "value_template": "{{ value }}",
-            })
-
-            # Feed-in sensor for this quarter
-            feedin_config = base_config.copy()
-            feedin_config.update({
-                "name": f"Kenter Energy Feed-in {quarter_key}",
-                "unique_id": f"kenter_energy_feedin_{mqtt_quarter_key}",
-                "state_topic": f"kenter/sensor/feedin/{mqtt_quarter_key}/state",
-                "value_template": "{{ value }}",
-            })
-
-            # Publish configurations
-            self.publish_with_retry(
-                f"homeassistant/sensor/kenter_energy_monitor/consumption_{mqtt_quarter_key}/config",
-                json.dumps(consumption_config)
-            )
-            self.publish_with_retry(
-                f"homeassistant/sensor/kenter_energy_monitor/feedin_{mqtt_quarter_key}/config",
-                json.dumps(feedin_config)
-            )
-
-            # Publish states
-            self.publish_with_retry(
-                f"kenter/sensor/consumption/{mqtt_quarter_key}/state",
-                str(round(values['consumption'], 3))
-            )
-            self.publish_with_retry(
-                f"kenter/sensor/feedin/{mqtt_quarter_key}/state",
-                str(round(values['feedin'], 3))
-            )
-
-        # Calculate and publish daily totals
-        daily_consumption = sum(values['consumption'] for values in data.values() if values['timestamp'])
-        daily_feedin = sum(values['feedin'] for values in data.values() if values['timestamp'])
-
-        daily_consumption_config = base_config.copy()
-        daily_consumption_config.update({
-            "name": "Kenter Energy Consumption Daily",
-            "unique_id": "kenter_energy_consumption_daily",
-            "state_topic": "kenter/sensor/consumption/daily/state",
+        feedin_config = {
+            "name": "Kenter Energy Feed-in",
+            "unique_id": "kenter_energy_feedin",
+            "device_class": "energy",
+            "state_class": "total",
+            "unit_of_measurement": "kWh",
+            "state_topic": "kenter/sensor/feedin/state",
             "value_template": "{{ value }}",
-        })
+            "device": {
+                "identifiers": ["kenter_energy_monitor"],
+                "name": "Kenter Energy Monitor",
+                "model": "Energy Monitor",
+                "manufacturer": "Kenter"
+            }
+        }
 
-        daily_feedin_config = base_config.copy()
-        daily_feedin_config.update({
-            "name": "Kenter Energy Feed-in Daily",
-            "unique_id": "kenter_energy_feedin_daily",
-            "state_topic": "kenter/sensor/feedin/daily/state",
-            "value_template": "{{ value }}",
-        })
-
-        # Publish daily configurations and states
+        # Publish configurations
         self.publish_with_retry(
-            "homeassistant/sensor/kenter_energy_monitor/consumption_daily/config",
-            json.dumps(daily_consumption_config)
+            "homeassistant/sensor/kenter_energy_monitor/consumption/config",
+            json.dumps(consumption_config)
         )
         self.publish_with_retry(
-            "homeassistant/sensor/kenter_energy_monitor/feedin_daily/config",
-            json.dumps(daily_feedin_config)
-        )
-        self.publish_with_retry(
-            "kenter/sensor/consumption/daily/state",
-            str(round(daily_consumption, 3))
-        )
-        self.publish_with_retry(
-            "kenter/sensor/feedin/daily/state",
-            str(round(daily_feedin, 3))
+            "homeassistant/sensor/kenter_energy_monitor/feedin/config",
+            json.dumps(feedin_config)
         )
 
-        logger.info(f"Published data for {date_str}")
-        logger.info(f"Daily totals - Consumption: {daily_consumption:.3f} kWh, Feed-in: {daily_feedin:.3f} kWh")
+        # Publish states
+        self.publish_with_retry(
+            "kenter/sensor/consumption/state",
+            str(data['consumption'])
+        )
+        self.publish_with_retry(
+            "kenter/sensor/feedin/state",
+            str(data['feedin'])
+        )
 
     def run(self):
         """Main loop"""
+        last_check = None
+        
         while True:
             try:
-                # Calculate exactly 24 hours ago
-                target_time = datetime.now() - timedelta(hours=24)
+                # Get current time and calculate target time (24 hours ago)
+                now = datetime.now()
+                target_time = now - timedelta(hours=24)
                 
-                # Fetch and publish data
-                data = self.fetch_kenter_data(target_time)
-                if data:
-                    self.publish_sensor_data(data, target_time)
-                    logger.info(f"Published data for {target_time.strftime('%Y-%m-%d %H:%M')}")
-                else:
-                    logger.error(f"No data available for {target_time.strftime('%Y-%m-%d %H:%M')}")
-
-                time.sleep(CHECK_INTERVAL)
+                # Round down to nearest 15 minutes to match Kenter's measurement intervals
+                target_time = target_time.replace(
+                    minute=(target_time.minute // 15) * 15,
+                    second=0,
+                    microsecond=0
+                )
+                
+                # Only fetch if we haven't checked this 15-minute interval yet
+                if last_check is None or target_time > last_check:
+                    data = self.fetch_kenter_data(target_time)
+                    if data:
+                        self.publish_sensor_data(data)
+                        logger.info(f"Published data for {target_time.strftime('%Y-%m-%d %H:%M')}")
+                        last_check = target_time
+                    else:
+                        logger.error(f"No data available for {target_time.strftime('%Y-%m-%d %H:%M')}")
+                
+                # Sleep until next 15-minute interval
+                sleep_time = 60  # Check every minute to not miss the 15-minute mark
+                time.sleep(sleep_time)
+                
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
                 time.sleep(60)  # Wait a minute before retrying
