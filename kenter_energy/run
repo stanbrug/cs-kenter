@@ -1,0 +1,8 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Start the Kenter Energy Monitor
+# ==============================================================================
+
+bashio::log.info "Starting Kenter Energy Monitor..."
+
+python3 -u /app/kenter_energy.py 

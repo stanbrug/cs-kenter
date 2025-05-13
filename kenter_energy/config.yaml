@@ -33,6 +33,24 @@ options:
     name: Kenter Metering Point
     description: "Your Kenter metering point ID"
     required: true
+  mqtt_host:
+    name: MQTT Host
+    description: "The hostname of the MQTT broker"
+    required: false
+    default: "core-mosquitto"
+  mqtt_port:
+    name: MQTT Port
+    description: "The port of the MQTT broker"
+    required: false
+    default: 1883
+  mqtt_user:
+    name: MQTT Username
+    description: "The username for the MQTT broker"
+    required: false
+  mqtt_password:
+    name: MQTT Password
+    description: "The password for the MQTT broker"
+    required: false
   check_interval:
     name: Check Interval
     description: "How often to check for new data (in seconds)"
@@ -44,4 +62,8 @@ schema:
   kenter_client_secret: str
   kenter_connection_id: str
   kenter_metering_point: str
+  mqtt_host: str?
+  mqtt_port: int?
+  mqtt_user: str?
+  mqtt_password: str?
   check_interval: int? 

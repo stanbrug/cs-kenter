@@ -14,5 +14,8 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 # Copy application
 COPY . .
 
+# Make run script executable
+RUN chmod a+x /app/run
+
 # Run script
-CMD [ "python3", "-u", "kenter_energy.py" ] 
+CMD [ "/app/run" ] 
