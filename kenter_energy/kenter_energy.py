@@ -210,6 +210,16 @@ class KenterEnergyMonitor:
 
         # Publish attributes
         self.mqtt_client.publish(
+            "kenter/consumption/attributes",
+            json.dumps({"last_update": date_str}),
+            retain=True
+        )
+        self.mqtt_client.publish(
+            "kenter/feedin/attributes",
+            json.dumps({"last_update": date_str}),
+            retain=True
+        )
+
     def run(self):
         """Main loop"""
         while True:
