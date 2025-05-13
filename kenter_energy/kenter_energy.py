@@ -20,6 +20,8 @@ KENTER_CONNECTION_ID = os.getenv('KENTER_CONNECTION_ID')
 KENTER_METERING_POINT = os.getenv('KENTER_METERING_POINT')
 MQTT_HOST = os.getenv('MQTT_HOST', 'core-mosquitto')
 MQTT_PORT = int(os.getenv('MQTT_PORT', '1883'))
+MQTT_USER = os.getenv('MQTT_USER')
+MQTT_PASSWORD = os.getenv('MQTT_PASSWORD')
 CHECK_INTERVAL = int(os.getenv('CHECK_INTERVAL', '3600'))
 MQTT_RECONNECT_DELAY = 5  # seconds between reconnection attempts
 
@@ -48,6 +50,10 @@ class KenterEnergyMonitor:
                 }
                 error_msg = error_messages.get(rc, f"Unknown error code: {rc}")
                 logger.error(f"Failed to connect to MQTT broker: {error_msg}")
+                if rc == 4:
+                    logger.error("Please check your MQTT username and password configuration")
+                elif rc == 5:
+                    logger.error("Please check if your MQTT user has the correct permissions")
                 self.mqtt_connected = False
         
         def on_disconnect(client, userdata, rc):
@@ -71,6 +77,18 @@ class KenterEnergyMonitor:
         # Set callbacks
         self.mqtt_client.on_connect = on_connect
         self.mqtt_client.on_disconnect = on_disconnect
+
+        # Setup MQTT authentication
+        if MQTT_USER and MQTT_PASSWORD:
+            logger.info(f"Configuring MQTT authentication for user: {MQTT_USER}")
+            self.mqtt_client.username_pw_set(MQTT_USER, MQTT_PASSWORD)
+        else:
+            logger.warning("No MQTT credentials provided. Please configure MQTT username and password in the addon configuration.")
+            logger.warning("To configure MQTT credentials:")
+            logger.warning("1. Go to Home Assistant addon configuration for Kenter Energy Monitor")
+            logger.warning("2. Set mqtt_user and mqtt_password")
+            logger.warning("3. Restart the addon")
+            raise Exception("MQTT credentials required but not configured")
 
         # Enable MQTT logging
         self.mqtt_client.enable_logger(logger)
