@@ -1,5 +1,5 @@
 name: Kenter Energy Monitor
-version: "1.0.12"
+version: "1.0.13"
 slug: kenter_energy
 description: "Monitor energy consumption and feed-in from Kenter API"
 arch:

@@ -164,42 +164,52 @@ class KenterEnergyMonitor:
         # Create sensor configuration
         consumption_config = {
             "name": "Kenter Energy Consumption",
-            "state_topic": f"kenter/consumption/{date_str}",
-            "unit_of_measurement": "kWh",
+            "unique_id": "kenter_energy_consumption",
             "device_class": "energy",
-            "state_class": "total"
+            "state_class": "total",
+            "unit_of_measurement": "kWh",
+            "state_topic": "kenter/consumption/state",
+            "value_template": "{{ value_json.consumption }}",
+            "json_attributes_topic": "kenter/consumption/attributes"
         }
 
         feedin_config = {
             "name": "Kenter Energy Feed-in",
-            "state_topic": f"kenter/feedin/{date_str}",
-            "unit_of_measurement": "kWh",
+            "unique_id": "kenter_energy_feedin",
             "device_class": "energy",
-            "state_class": "total"
+            "state_class": "total",
+            "unit_of_measurement": "kWh",
+            "state_topic": "kenter/feedin/state",
+            "value_template": "{{ value_json.feedin }}",
+            "json_attributes_topic": "kenter/feedin/attributes"
         }
 
-        # Publish configurations
+        # Publish discovery configs
         self.mqtt_client.publish(
-            f"homeassistant/sensor/kenter_consumption/config",
+            "homeassistant/sensor/kenter_consumption/config",
             json.dumps(consumption_config),
             retain=True
         )
         self.mqtt_client.publish(
-            f"homeassistant/sensor/kenter_feedin/config",
+            "homeassistant/sensor/kenter_feedin/config",
             json.dumps(feedin_config),
             retain=True
         )
 
         # Publish states
         self.mqtt_client.publish(
-            f"kenter/consumption/{date_str}",
-            str(data.get('consumption', 0))
+            "kenter/consumption/state",
+            json.dumps({"consumption": data.get('consumption', 0), "date": date_str}),
+            retain=True
         )
         self.mqtt_client.publish(
-            f"kenter/feedin/{date_str}",
-            str(data.get('feedin', 0))
+            "kenter/feedin/state",
+            json.dumps({"feedin": data.get('feedin', 0), "date": date_str}),
+            retain=True
         )
 
+        # Publish attributes
+        self.mqtt_client.publish(
     def run(self):
         """Main loop"""
         while True:
