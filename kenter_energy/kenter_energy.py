@@ -29,6 +29,9 @@ class KenterEnergyMonitor:
     def __init__(self):
         self.mqtt_client = None
         self.mqtt_connected = False
+        self.daily_consumption = 0  # Track daily total consumption
+        self.daily_feedin = 0      # Track daily total feed-in
+        self.last_reset_date = None  # Track when we last reset the counters
         self.setup_mqtt()
         self.access_token = None
         self.refresh_token = None
@@ -189,6 +192,13 @@ class KenterEnergyMonitor:
             # If refresh fails, try to get a new token
             return self.get_jwt_token()
         
+    def reset_daily_counters(self):
+        """Reset daily counters and update last reset date"""
+        self.daily_consumption = 0
+        self.daily_feedin = 0
+        self.last_reset_date = datetime.now().date()
+        logger.info("Reset daily counters to 0")
+
     def fetch_kenter_data(self, timestamp):
         """Fetch data from Kenter API for the specific timestamp"""
         token = self.get_jwt_token()
@@ -232,7 +242,7 @@ class KenterEnergyMonitor:
                                 feedin = measurement.get('value', 0)
 
             logger.info(f"Found data for {timestamp.strftime('%Y-%m-%d %H:%M')}:")
-            logger.info(f"Consumption: {consumption:.3f} kWh, Feed-in: {feedin:.3f} kWh")
+            logger.info(f"Interval values - Consumption: {consumption:.3f} kWh, Feed-in: {feedin:.3f} kWh")
 
             return {
                 'consumption': round(consumption, 3),
@@ -273,12 +283,21 @@ class KenterEnergyMonitor:
         if not data:
             return
 
-        # Create sensor configurations (only needs to be done once, but no harm in repeating)
+        # Check if we need to reset daily counters
+        current_date = datetime.now().date()
+        if self.last_reset_date is None or current_date > self.last_reset_date:
+            self.reset_daily_counters()
+
+        # Add new values to daily totals
+        self.daily_consumption += data['consumption']
+        self.daily_feedin += data['feedin']
+
+        # Create sensor configurations
         consumption_config = {
-            "name": "Kenter Energy Consumption",
-            "unique_id": "kenter_energy_consumption",
+            "name": "Kenter Daily Energy Consumption",
+            "unique_id": "kenter_daily_energy_consumption",
             "device_class": "energy",
-            "state_class": "total",
+            "state_class": "total_increasing",
             "unit_of_measurement": "kWh",
             "state_topic": "kenter/sensor/consumption/state",
             "value_template": "{{ value }}",
@@ -291,10 +310,10 @@ class KenterEnergyMonitor:
         }
 
         feedin_config = {
-            "name": "Kenter Energy Feed-in",
-            "unique_id": "kenter_energy_feedin",
+            "name": "Kenter Daily Energy Production",
+            "unique_id": "kenter_daily_energy_production",
             "device_class": "energy",
-            "state_class": "total",
+            "state_class": "total_increasing",
             "unit_of_measurement": "kWh",
             "state_topic": "kenter/sensor/feedin/state",
             "value_template": "{{ value }}",
@@ -316,15 +335,17 @@ class KenterEnergyMonitor:
             json.dumps(feedin_config)
         )
 
-        # Publish states
+        # Publish states with daily totals
         self.publish_with_retry(
             "kenter/sensor/consumption/state",
-            str(data['consumption'])
+            str(round(self.daily_consumption, 3))
         )
         self.publish_with_retry(
             "kenter/sensor/feedin/state",
-            str(data['feedin'])
+            str(round(self.daily_feedin, 3))
         )
+
+        logger.info(f"Daily totals - Consumption: {self.daily_consumption:.3f} kWh, Feed-in: {self.daily_feedin:.3f} kWh")
 
     def run(self):
         """Main loop"""
