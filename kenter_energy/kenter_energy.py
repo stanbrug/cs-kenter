@@ -165,60 +165,70 @@ class KenterEnergyMonitor:
         consumption_config = {
             "name": "Kenter Energy Consumption",
             "unique_id": "kenter_energy_consumption",
+            "object_id": "kenter_energy_consumption",
             "device_class": "energy",
-            "state_class": "total",
+            "state_class": "total_increasing",
             "unit_of_measurement": "kWh",
-            "state_topic": "kenter/consumption/state",
-            "value_template": "{{ value_json.consumption }}",
-            "json_attributes_topic": "kenter/consumption/attributes"
+            "state_topic": "kenter/sensor/consumption/state",
+            "value_template": "{{ value }}",
+            "device": {
+                "identifiers": ["kenter_energy_monitor"],
+                "name": "Kenter Energy Monitor",
+                "model": "Energy Monitor",
+                "manufacturer": "Kenter"
+            }
         }
 
         feedin_config = {
             "name": "Kenter Energy Feed-in",
             "unique_id": "kenter_energy_feedin",
+            "object_id": "kenter_energy_feedin",
             "device_class": "energy",
-            "state_class": "total",
+            "state_class": "total_increasing",
             "unit_of_measurement": "kWh",
-            "state_topic": "kenter/feedin/state",
-            "value_template": "{{ value_json.feedin }}",
-            "json_attributes_topic": "kenter/feedin/attributes"
+            "state_topic": "kenter/sensor/feedin/state",
+            "value_template": "{{ value }}",
+            "device": {
+                "identifiers": ["kenter_energy_monitor"],
+                "name": "Kenter Energy Monitor",
+                "model": "Energy Monitor",
+                "manufacturer": "Kenter"
+            }
         }
 
+        logger.info("Publishing MQTT discovery configurations...")
+        
         # Publish discovery configs
-        self.mqtt_client.publish(
-            "homeassistant/sensor/kenter_consumption/config",
+        result = self.mqtt_client.publish(
+            "homeassistant/sensor/kenter_energy_monitor/consumption/config",
             json.dumps(consumption_config),
             retain=True
         )
-        self.mqtt_client.publish(
-            "homeassistant/sensor/kenter_feedin/config",
+        logger.info(f"Published consumption config: {result.rc == mqtt.MQTT_ERR_SUCCESS}")
+
+        result = self.mqtt_client.publish(
+            "homeassistant/sensor/kenter_energy_monitor/feedin/config",
             json.dumps(feedin_config),
             retain=True
         )
+        logger.info(f"Published feedin config: {result.rc == mqtt.MQTT_ERR_SUCCESS}")
 
         # Publish states
-        self.mqtt_client.publish(
-            "kenter/consumption/state",
-            json.dumps({"consumption": data.get('consumption', 0), "date": date_str}),
+        logger.info("Publishing sensor states...")
+        
+        result = self.mqtt_client.publish(
+            "kenter/sensor/consumption/state",
+            str(data.get('consumption', 0)),
             retain=True
         )
-        self.mqtt_client.publish(
-            "kenter/feedin/state",
-            json.dumps({"feedin": data.get('feedin', 0), "date": date_str}),
-            retain=True
-        )
+        logger.info(f"Published consumption state: {result.rc == mqtt.MQTT_ERR_SUCCESS}")
 
-        # Publish attributes
-        self.mqtt_client.publish(
-            "kenter/consumption/attributes",
-            json.dumps({"last_update": date_str}),
+        result = self.mqtt_client.publish(
+            "kenter/sensor/feedin/state",
+            str(data.get('feedin', 0)),
             retain=True
         )
-        self.mqtt_client.publish(
-            "kenter/feedin/attributes",
-            json.dumps({"last_update": date_str}),
-            retain=True
-        )
+        logger.info(f"Published feedin state: {result.rc == mqtt.MQTT_ERR_SUCCESS}")
 
     def run(self):
         """Main loop"""
