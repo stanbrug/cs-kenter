@@ -3,6 +3,18 @@
 # Start the Kenter Energy Monitor
 # ==============================================================================
 
+# Export configuration as environment variables
+export KENTER_API_URL="$(bashio::config 'kenter_api_url')"
+export KENTER_CLIENT_ID="$(bashio::config 'kenter_client_id')"
+export KENTER_CLIENT_SECRET="$(bashio::config 'kenter_client_secret')"
+export KENTER_CONNECTION_ID="$(bashio::config 'kenter_connection_id')"
+export KENTER_METERING_POINT="$(bashio::config 'kenter_metering_point')"
+export MQTT_HOST="$(bashio::config 'mqtt_host')"
+export MQTT_PORT="$(bashio::config 'mqtt_port')"
+export MQTT_USER="$(bashio::config 'mqtt_user')"
+export MQTT_PASSWORD="$(bashio::config 'mqtt_password')"
+export CHECK_INTERVAL="$(bashio::config 'check_interval')"
+
 bashio::log.info "Starting Kenter Energy Monitor..."
 
 python3 -u /app/kenter_energy.py 

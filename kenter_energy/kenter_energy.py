@@ -7,23 +7,22 @@ import requests
 from datetime import datetime, timedelta
 import paho.mqtt.client as mqtt
 from dateutil import parser
-import bashio
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuration
-KENTER_API_URL = bashio.config.get('kenter_api_url', 'https://api.kenter.nu')
-KENTER_CLIENT_ID = bashio.config.get('kenter_client_id')
-KENTER_CLIENT_SECRET = bashio.config.get('kenter_client_secret')
-KENTER_CONNECTION_ID = bashio.config.get('kenter_connection_id')
-KENTER_METERING_POINT = bashio.config.get('kenter_metering_point')
-MQTT_HOST = bashio.config.get('mqtt_host', 'core-mosquitto')
-MQTT_PORT = int(bashio.config.get('mqtt_port', 1883))
-MQTT_USER = bashio.config.get('mqtt_user')
-MQTT_PASSWORD = bashio.config.get('mqtt_password')
-CHECK_INTERVAL = int(bashio.config.get('check_interval', 3600))  # Default 1 hour
+# Configuration from environment variables
+KENTER_API_URL = os.getenv('KENTER_API_URL', 'https://api.kenter.nu')
+KENTER_CLIENT_ID = os.getenv('KENTER_CLIENT_ID')
+KENTER_CLIENT_SECRET = os.getenv('KENTER_CLIENT_SECRET')
+KENTER_CONNECTION_ID = os.getenv('KENTER_CONNECTION_ID')
+KENTER_METERING_POINT = os.getenv('KENTER_METERING_POINT')
+MQTT_HOST = os.getenv('MQTT_HOST', 'core-mosquitto')
+MQTT_PORT = int(os.getenv('MQTT_PORT', '1883'))
+MQTT_USER = os.getenv('MQTT_USER')
+MQTT_PASSWORD = os.getenv('MQTT_PASSWORD')
+CHECK_INTERVAL = int(os.getenv('CHECK_INTERVAL', '3600'))
 
 class KenterEnergyMonitor:
     def __init__(self):

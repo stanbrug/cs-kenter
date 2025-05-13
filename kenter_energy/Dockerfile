@@ -18,4 +18,4 @@ COPY . .
 RUN chmod a+x /app/run
 
 # Run script
-CMD [ "/app/run" ] 
+CMD [ "/app/run" ]
