@@ -1,5 +1,5 @@
 name: Kenter Energy Monitor
-version: "1.0.1"
+version: "1.0.2"
 slug: kenter_energy
 description: "Monitor energy consumption and feed-in from Kenter API"
 arch:
@@ -12,51 +12,6 @@ startup: application
 init: false
 services:
   - mqtt:need
-options:
-  kenter_api_url:
-    name: Kenter API URL
-    description: "The URL of the Kenter API"
-    required: false
-    default: "https://api.kenter.nu"
-  kenter_client_id:
-    name: Kenter Client ID
-    description: "Your Kenter client ID"
-    required: true
-  kenter_client_secret:
-    name: Kenter Client Secret
-    description: "Your Kenter client secret"
-    required: true
-  kenter_connection_id:
-    name: Kenter Connection ID
-    description: "Your Kenter connection ID"
-    required: true
-  kenter_metering_point:
-    name: Kenter Metering Point
-    description: "Your Kenter metering point ID"
-    required: true
-  mqtt_host:
-    name: MQTT Host
-    description: "The hostname of the MQTT broker"
-    required: false
-    default: "core-mosquitto"
-  mqtt_port:
-    name: MQTT Port
-    description: "The port of the MQTT broker"
-    required: false
-    default: 1883
-  mqtt_user:
-    name: MQTT Username
-    description: "The username for the MQTT broker"
-    required: false
-  mqtt_password:
-    name: MQTT Password
-    description: "The password for the MQTT broker"
-    required: false
-  check_interval:
-    name: Check Interval
-    description: "How often to check for new data (in seconds)"
-    required: false
-    default: 3600
 schema:
   kenter_api_url: str
   kenter_client_id: str
